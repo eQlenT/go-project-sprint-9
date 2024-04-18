@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var mu sync.Mutex
+
 // Generator генерирует последовательность чисел 1,2,3 и т.д. и
 // отправляет их в канал ch. При этом после записи в канал для каждого числа
 // вызывается функция fn. Она служит для подсчёта количества и суммы
@@ -28,17 +30,16 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 // Worker читает число из канала in и пишет его в канал out.
 func Worker(in <-chan int64, out chan<- int64) {
 	// 2. Функция Worker
-	var val int64
 	for {
+		//Ув. Ревьюер, извините за select с одним case'ом с:
 		select {
-		case val = <-in:
-			out <- val
-			time.Sleep(1 * time.Millisecond)
-		case _, ok := <-in:
+		case val, ok := <-in:
 			if !ok {
 				close(out)
 				return
 			}
+			out <- val
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }
@@ -55,11 +56,13 @@ func main() {
 
 	// генерируем числа, считая параллельно их количество и сумму
 	go Generator(ctx, chIn, func(i int64) {
+		mu.Lock()
+		defer mu.Unlock()
 		inputSum += i
 		inputCount++
 	})
 
-	const NumOut = 5 // количество обрабатывающих горутин и каналов
+	const NumOut = 10 // количество обрабатывающих горутин и каналов
 	// outs — слайс каналов, куда будут записываться числа из chIn
 	outs := make([]chan int64, NumOut)
 	for i := 0; i < NumOut; i++ {
